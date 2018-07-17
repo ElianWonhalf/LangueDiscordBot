@@ -10,9 +10,9 @@
   "license": "ISC",
   "dependencies": {
     "@elian-wonhalf/pretty-logger": "^1.0.1",
-    "deepl-translator": "^1.1.0",
     "discord.js": "^11.2.1",
     "gender-fr": "^1.0.4",
+    "google-translate-api": "^2.3.0",
     "wikijs": "^4.5.0"
   }
 }

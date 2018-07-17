@@ -1,16 +1,34 @@
 const Discord = require('discord.js');
-const DeeplTranslator = require('deepl-translator');
+const translate = require('google-translate-api');
 const Dictionary = require('./word-definition/index');
 const Gender = require('gender-fr');
-const Wiki = require('wikijs');
 const Logger = require('@elian-wonhalf/pretty-logger');
 
 const config = require('./config.json');
 const bot = new Discord.Client();
 
+
 const definition = 'def';
-const synonym = 'synonymebeta';
-const etymology = 'ety';
+const frenchWarning = 'Attention, je ne suis qu\'un bot automatique, donc l\'information que je fournis peut être inexacte, il ne faut pas hésiter à demander à des vrais natifs !\n';
+const englishWarning = 'Be aware that I\'m just an automatic bot, so the information I provide can be wrong, don\'t hesitate to ask real natives!\n';
+
+process.on('uncaughtException', (exception) => {
+    if (typeof bot === 'undefined') {
+        Logger.error('Crashed at an unknown position. This is weird. This shouldn\'t happen. SEND HALP!');
+        Logger.error('----');
+        Logger.exception(exception);
+        Logger.error('----');
+    } else {
+        Logger.error('I crashed. I CRASHED D: !');
+        Logger.error('----');
+        Logger.exception(exception);
+        Logger.error('----');
+
+        bot.destroy().then(() => {
+            bot.login(config.token).catch(Logger.exception);
+        }).catch(Logger.exception);
+    }
+});
 
 bot.on('ready', function () {
     Logger.notice('Connected!');
@@ -28,26 +46,21 @@ bot.on('message', function (message) {
 
 function handleCommand(message, command, arguments, debug) {
     let regTranslate = /^[a-z]{2}-[a-z]{2}$/;
-    let regWord = /^[A-Za-z\u00E0-\u00FC]+$/;
 
     if (debug) {
         Logger.info('Received a command "' + command + '"');
     }
 
     if (regTranslate.test(command) && arguments.length > 2) {
-        deepl(message, command, debug);
+        deepl(message, command, arguments, debug);
     }
 
     if (command === definition) {
         wikitionaryDefinition(message, arguments, debug)
     }
-
-    if ((command === etymology || command === synonym) && regWord.test(arguments)) {
-        wikitionaryEtymology(message, command, arguments, debug);
-    }
 }
 
-function deepl(message, command, debug) {
+function deepl(message, command, arguments, debug) {
     let from = command.split('-')[0];
     let to = command.split('-')[1];
 
@@ -55,10 +68,10 @@ function deepl(message, command, debug) {
         Logger.info('DEEPL: Translating from ' + from + ' to ' + to + '...');
     }
 
-    DeeplTranslator.translate(arguments, to.toUpperCase(), from.toUpperCase()).then(res => {
-        let translation = '_' + arguments + '_ => ' + '_' + res.translation + '_';
-        message.channel.send(translation).catch(Logger.error);
-    }).catch(Logger.error);
+    translate(arguments, {from: from.toLowerCase(), to: to.toLowerCase()}).then(res => {
+        let translation = '_' + arguments + '_ => ' + '_' + res.text + '_';
+        sendMessage(message, translation);
+    }).catch(Logger.exception);
 }
 
 function wikitionaryDefinition(message, arguments, debug) {
@@ -90,9 +103,9 @@ function wikitionaryDefinition(message, arguments, debug) {
                         res = '__' + def.word + '__, ' + def.category + genderOfNoun + ' : \r  `' + def.definition + '`';
 
                         if (!def.err) {
-                            message.channel.send(res).catch(Logger.error);
+                            sendMessage(message, res);
                         } else {
-                            message.channel.send(handleWikitionaryError(def.err, lang)).catch(Logger.error);
+                            sendMessage(message, handleWikitionaryError(def.err, lang));
                         }
                     })
                 })
@@ -105,51 +118,11 @@ function wikitionaryDefinition(message, arguments, debug) {
             res = '__' + def.word + '__, ' + def.category + ' : \r  `' + def.definition + '`';
 
             if (!def.err) {
-                message.channel.send(res).catch(Logger.error);
+                sendMessage(message, res);
             } else {
-                message.channel.send(handleWikitionaryError(def.err, lang)).catch(Logger.error);
+                sendMessage(message, handleWikitionaryError(def.err, lang));
             }
         }
-    });
-}
-
-function wikitionaryEtymology(message, command, arguments, debug) {
-    let title;
-    let lang = message.channel.name === 'anglais' ? 'en' : 'fr';
-
-    if (debug) {
-        Logger.info('ETYMOLOGY: Fetching an etymology for language ' + lang + '...');
-    }
-
-    if (command === synonym) {
-        title = message.channel.name === 'anglais' ? 'Synonyms' : 'Synonymes';
-    } else if (command === etymology) {
-        title = message.channel.name === 'anglais' ? 'Etymology' : 'Étymologie';
-    } else {
-        title = message.channel.name === '';
-    }
-
-    if (debug) {
-        Logger.info('ETYMOLOGY: title is ' + title);
-    }
-
-    Wiki.default({
-        apiUrl: 'https://' + lang + '.wiktionary.org/w/api.php',
-        origin: null
-    }).search(arguments).then((s) => {
-        Wiki.default({
-            apiUrl: 'https://' + lang + '.wiktionary.org/w/api.php',
-            origin: null
-        }).page(s.results[0]).then((p) => {
-            p.content().then((c) => {
-                let etymology = capTextByTitle(c, title, command).trim();
-
-                if (etymology.length > 5) {
-                    etymology = '(' + title.toLowerCase() + ') __' + p.raw.title + '__ : \r `' + etymology + '`';
-                    message.channel.send(etymology).catch(Logger.error);
-                }
-            });
-        });
     });
 }
 
@@ -174,7 +147,7 @@ function handleWikitionaryError(error, lang) {
             break;
 
         default:
-            Logger.error(error);
+            Logger.exception(error);
 
             if (lang === 'fr') {
                 answer = 'Une erreur inconnue est survenue, <@' + config.owner + '> tu peux regarder ce que c\'est ?';
@@ -187,31 +160,20 @@ function handleWikitionaryError(error, lang) {
     return answer;
 }
 
-function capTextByTitle(ctt, title, cmd) {
-    let ret = '';
+function sendMessage(message, answer) {
+    let warning = isAuthorNative(message) ? '**' + frenchWarning + '**' : '**' + englishWarning + '**';
 
-    if (title !== '') {
-        ret = ctt.substr(ctt.indexOf(title));
-        ret = ret.split(/(===)\s.+\s(===)|(====)\s.+\s(====)/)[0];
-        ret = ret.split(/\([0-9]+\)/).join('');
-
-        if (cmd === etymology) {
-            ret = ret.replace(title + ' ===', '');
-        } else if (cmd === synonym) {
-            ret = ret.replace(title + ' ====', '');
-            ret = ret.split(/\s+/).join(', ').trim()
-        }
-
-        if (/,/.test(ret[ret.length - 1])) {
-            ret = ret.substr(0, ret.length - 1);
-        }
-
-        if (/,/.test(ret[0])) {
-            ret = ret.replace(',', '');
-        }
-    }
-
-    return ret
+    return message.channel.send(warning + answer).catch(Logger.exception);
 }
 
-bot.login(config.token).catch(Logger.error);
+function isAuthorNative(message) {
+    let native = false;
+
+    if (message.guild !== null) {
+        native = message.guild.member(message.author).roles.exists('name', 'Francophone Natif');
+    }
+
+    return native;
+}
+
+bot.login(config.token).catch(Logger.exception);
