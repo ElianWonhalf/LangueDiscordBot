@@ -9,8 +9,8 @@ const bot = new Discord.Client();
 
 
 const definition = 'def';
-const frenchWarning = 'Attention, je ne suis qu\'un bot automatique, donc l\'information que je fournis peut être inexacte, il ne faut pas hésiter à demander à des vrais natifs !\n';
-const englishWarning = 'Be aware that I\'m just an automatic bot, so the information I provide can be wrong, don\'t hesitate to ask real natives!\n';
+const frenchWarning = 'Cette réponse automatique peut être fausse, n\'hésite pas à demander à un natif.';
+const englishWarning = 'This automatic answer might be wrong, feel free to ask a native.';
 
 process.on('uncaughtException', (exception) => {
     if (typeof bot === 'undefined') {
@@ -161,7 +161,7 @@ function handleWikitionaryError(error, lang) {
 }
 
 function sendMessage(message, answer) {
-    let warning = isAuthorNative(message) ? '**' + frenchWarning + '**' : '**' + englishWarning + '**';
+    let warning = isAuthorNative(message) ? '**' + frenchWarning + '**\n' : '**' + englishWarning + '**\n';
 
     return message.channel.send(warning + answer).catch(Logger.exception);
 }
